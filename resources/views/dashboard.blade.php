@@ -3,6 +3,8 @@
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
             {{ __('Dashboard') }}
         </h2>
+
+        <a class="font-semibold text-xl text-gray-800 leading-tight" href="{{route('chat.index')}}">Chat</a>
     </x-slot>
 
     <div class="py-12">
