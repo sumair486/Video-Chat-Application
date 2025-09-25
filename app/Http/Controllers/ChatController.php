@@ -137,14 +137,27 @@ class ChatController extends Controller
      */
     public function markAsRead(User $user): JsonResponse
     {
-        Message::where('receiver_id', auth()->id())
+        $currentUser = auth()->user();
+        
+        // Get unread messages from this user
+        $messages = Message::where('receiver_id', $currentUser->id)
             ->where('user_id', $user->id)
             ->where('is_read', false)
-            ->update([
+            ->get();
+
+        $messageIds = $messages->pluck('id')->toArray();
+
+        if (!empty($messageIds)) {
+            // Mark messages as read
+            Message::whereIn('id', $messageIds)->update([
                 'is_read' => true,
                 'read_at' => now()
             ]);
 
-        return response()->json(['success' => true]);
+            // Broadcast read status to the sender
+            broadcast(new \App\Events\MessageRead($messageIds, $currentUser->id, $user->id));
+        }
+
+        return response()->json(['success' => true, 'marked_count' => count($messageIds)]);
     }
 }

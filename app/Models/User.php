@@ -117,10 +117,32 @@ class User extends Authenticatable
     }
 
     /**
-     * Update user's last seen timestamp
+     * Update user's last seen timestamp and broadcast status change
      */
     public function updateLastSeen(): void
     {
+        $wasOnline = $this->isOnline();
+        
         $this->update(['last_seen_at' => now()]);
+        
+        // Broadcast status change if user just came online
+        if (!$wasOnline) {
+            broadcast(new \App\Events\UserStatusChanged($this, 'online'));
+        }
+    }
+
+    /**
+     * Mark user as offline and broadcast status change
+     */
+    public function markOffline(): void
+    {
+        $wasOnline = $this->isOnline();
+        
+        $this->update(['last_seen_at' => now()->subMinutes(10)]);
+        
+        // Broadcast status change if user just went offline
+        if ($wasOnline) {
+            broadcast(new \App\Events\UserStatusChanged($this, 'offline'));
+        }
     }
 }

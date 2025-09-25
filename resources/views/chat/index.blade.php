@@ -333,7 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const isOwn = message.user.id === userId;
           
           const messageHTML = `
-            <div class="message ${isOwn ? 'message-own' : 'message-other'}">
+            <div class="message ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${message.id}">
               <div class="message-avatar">
                 <i class="fas fa-user"></i>
               </div>
@@ -365,6 +365,26 @@ document.addEventListener('DOMContentLoaded', async () => {
           // Update unread count in user list
           updateUnreadCount(message.user.id);
         }
+      })
+      .listen('.message.read', (e) => {
+        // Update read status for sent messages
+        const messageIds = e.message_ids;
+        messageIds.forEach(messageId => {
+          const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+          if (messageElement) {
+            const readStatus = messageElement.querySelector('.read-status i');
+            if (readStatus) {
+              readStatus.className = 'fas fa-check-double text-primary';
+            }
+          }
+        });
+      });
+
+    // Listen to user status changes on public channel
+    window.Echo.channel('user-status')
+      .listen('.user.status.changed', (e) => {
+        const user = e.user;
+        updateUserStatusInList(user.id, user.status);
       });
 
     // Enhanced form submission for private messages
@@ -420,6 +440,40 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
   }
+
+  // Function to update user status in the user list
+  const updateUserStatusInList = (userId, status) => {
+    const userItem = document.querySelector(`[data-user-id="${userId}"]`);
+    if (userItem) {
+      const statusDot = userItem.querySelector('.status-dot');
+      const statusText = userItem.querySelector('.user-status');
+      
+      if (statusDot) {
+        statusDot.className = `status-dot ${status}`;
+      }
+      
+      if (statusText) {
+        statusText.textContent = status === 'online' ? 'Online' : 'Offline';
+      }
+
+      // Update in chat header if this is the current chat user
+      if (currentChattingWith && parseInt(userId) === currentChattingWith) {
+        const chatStatusDot = document.querySelector('.chat-user-status .status-dot');
+        const chatStatusText = document.querySelector('.chat-user-status');
+        
+        if (chatStatusDot) {
+          chatStatusDot.className = `status-dot ${status}`;
+        }
+        
+        if (chatStatusText) {
+          const textNode = chatStatusText.childNodes[1]; // Get the text node after the status dot
+          if (textNode) {
+            textNode.textContent = status === 'online' ? ' Online' : ' Offline';
+          }
+        }
+      }
+    }
+  };
 
   // Function to update unread count in user list
   const updateUnreadCount = (fromUserId) => {
@@ -879,6 +933,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             await processQueuedCandidates();
             updateStatus('Call establishing...', 'success');
           }
+
+          // old code-------------------------------------
+
+
           else if (type === 'candidate') {
             if (!pc) {
               console.warn('Received ICE candidate but no peer connection exists');
@@ -893,6 +951,42 @@ document.addEventListener('DOMContentLoaded', async () => {
               iceCandidatesQueue.push(candidate);
             }
           }
+
+
+          // -------------------------------------------old code --------------
+
+
+          //---------------new code------------------------------------
+
+//           else if (type === 'candidate') {
+//   if (!pc) {
+//     console.warn('Received ICE candidate but no peer connection exists');
+//     return;
+//   }
+
+//   // ADD THIS VALIDATION
+//   if (!data || !data.candidate || typeof data.candidate !== 'string') {
+//     console.warn('Invalid or empty ICE candidate received:', data);
+//     return;
+//   }
+
+//   // Additional validation for candidate format
+//   if (!data.candidate.includes(':')) {
+//     console.warn('Malformed ICE candidate (missing colon):', data.candidate);
+//     return;
+//   }
+
+//   const candidate = new RTCIceCandidate(data);
+  
+//   if (isRemoteDescriptionSet) {
+//     await pc.addIceCandidate(candidate);
+//   } else {
+//     iceCandidatesQueue.push(candidate);
+//   }
+// }
+
+// ----------------new code-----------------------------------
+
         } catch (err) {
           console.error(`Error handling ${type} signal:`, err);
           updateStatus(`Error: ${err.message}`, 'error');

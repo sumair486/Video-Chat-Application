@@ -5,6 +5,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 use App\Models\User;
+use App\Services\UserStatusService;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -32,12 +33,18 @@ Route::middleware('auth')->group(function () {
     // Video call routes
     Route::post('/signal', [CallController::class, 'signal'])->name('call.signal');
 
-    // User status update route (for online/offline status)
-    Route::post('/user/update-status', function () {
-        auth()->user()->updateLastSeen();
+    // User status update route (enhanced with service)
+    Route::post('/user/update-status', function (UserStatusService $userStatusService) {
+        $userStatusService->updateUserStatus(auth()->user());
         return response()->json(['success' => true]);
     })->name('user.update-status');
-});
 
+    // Get all users with their status
+    Route::get('/users/status', function (UserStatusService $userStatusService) {
+        return response()->json([
+            'users' => $userStatusService->getUsersWithStatus()
+        ]);
+    })->name('users.status');
+});
 
 require __DIR__.'/auth.php';

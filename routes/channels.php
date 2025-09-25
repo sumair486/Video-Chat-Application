@@ -12,6 +12,11 @@ Broadcast::channel('chat.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
+// Public channel for user status updates - everyone can listen
+Broadcast::channel('user-status', function ($user) {
+    return true; // Allow all authenticated users to listen
+});
+
 // Presence channel for showing who's online in the chat
 Broadcast::channel('chat-presence', function ($user) {
     return [
