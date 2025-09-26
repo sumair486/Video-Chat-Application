@@ -74,52 +74,161 @@
             @endif
           </div>
           
-          <div class="chat-messages" id="chat-box">
-            @if($chattingWith)
-              @foreach($messages as $message)
-                <div class="message {{ $message->user->id === auth()->id() ? 'message-own' : 'message-other' }}">
-                  <div class="message-avatar">
-                    <i class="fas fa-user"></i>
-                  </div>
-                  <div class="message-content">
-                    <div class="message-header">
-                      <span class="message-author">{{ $message->user->name }}</span>
-                      <span class="message-time">{{ $message->created_at->format('H:i') }}</span>
-                      @if($message->user->id === auth()->id())
-                        <span class="read-status">
-                          <i class="fas {{ $message->is_read ? 'fa-check-double text-primary' : 'fa-check' }}"></i>
-                        </span>
-                      @endif
-                    </div>
-                    <div class="message-text">{{ $message->message }}</div>
-                  </div>
-                </div>
-              @endforeach
-            @else
-              <div class="no-chat-selected">
-                <i class="fas fa-comment-dots"></i>
-                <p>Select a user from the list above to start chatting</p>
-              </div>
+      <div class="chat-messages" id="chat-box">
+  @if($chattingWith)
+    @foreach($messages as $message)
+      <div class="message {{ $message->user->id === auth()->id() ? 'message-own' : 'message-other' }}" data-message-id="{{ $message->id }}">
+        <div class="message-avatar">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="message-content">
+          <div class="message-header">
+            <span class="message-author">{{ $message->user->name }}</span>
+            <span class="message-time">{{ $message->created_at->format('H:i') }}</span>
+            @if($message->user->id === auth()->id())
+              <span class="read-status">
+                <i class="fas {{ $message->is_read ? 'fa-check-double text-primary' : 'fa-check' }}"></i>
+              </span>
             @endif
           </div>
           
-          @if($chattingWith)
+          @if($message->is_file_message)
+            <!-- File Message -->
+            <div class="message-file">
+              @if($message->isImage())
+                <div class="image-message">
+                  <img src="{{ $message->file_url }}" alt="{{ $message->original_name }}" class="message-image" loading="lazy">
+                  <div class="image-overlay">
+                    <a href="{{ $message->file_url }}" target="_blank" class="image-view-btn">
+                      <i class="fas fa-expand"></i>
+                    </a>
+                    <a href="/chat/download/{{ $message->id }}" class="image-download-btn">
+                      <i class="fas fa-download"></i>
+                    </a>
+                  </div>
+                </div>
+              @elseif($message->isVideo())
+                <div class="video-message">
+                  <video controls class="message-video" preload="metadata">
+                    <source src="{{ $message->file_url }}" type="{{ $message->file_type }}">
+                    Your browser does not support the video tag.
+                  </video>
+                  <div class="video-info">
+                    <span class="file-name">{{ $message->original_name }}</span>
+                    <span class="file-size">{{ $message->formatted_file_size }}</span>
+                  </div>
+                  
+                </div>
+              @elseif($message->isAudio())
+                <div class="audio-message">
+                  <audio controls class="message-audio">
+                    <source src="{{ $message->file_url }}" type="{{ $message->file_type }}">
+                    Your browser does not support the audio tag.
+                  </audio>
+                  <div class="audio-info">
+                    <i class="{{ $message->getFileIcon() }}"></i>
+                    <div class="audio-details">
+                      <span class="file-name">{{ $message->original_name }}</span>
+                      <span class="file-size">{{ $message->formatted_file_size }}</span>
+                    </div>
+                  </div>
+                </div>
+              @else
+                <!-- Document/File Message -->
+                <div class="file-message">
+                  <div class="file-icon">
+                    <i class="{{ $message->getFileIcon() }}"></i>
+                  </div>
+                  <div class="file-info">
+                    <span class="file-name">{{ $message->original_name }}</span>
+                    <span class="file-size">{{ $message->formatted_file_size }}</span>
+                  </div>
+                  <div class="file-actions">
+                    <a href="/chat/download/{{ $message->id }}" class="file-download-btn" title="Download">
+                      <i class="fas fa-download"></i>
+                    </a>
+                  </div>
+                </div>
+              @endif
+              
+              @if($message->message)
+                <div class="file-caption">{{ $message->message }}</div>
+              @endif
+            </div>
+          @else
+            <!-- Text Message -->
+            <div class="message-text">{{ $message->message }}</div>
+          @endif
+        </div>
+      </div>
+    @endforeach
+  @else
+    <div class="no-chat-selected">
+      <i class="fas fa-comment-dots"></i>
+      <p>Select a user from the list above to start chatting</p>
+    </div>
+  @endif
+</div>
+          
+         @if($chattingWith)
             <div class="chat-input-wrapper">
+              <!-- File Upload Form (hidden) -->
+              <form id="file-upload-form" class="file-form" enctype="multipart/form-data" style="display: none;">
+                @csrf
+                <input type="hidden" name="receiver_id" value="{{ $chattingWith->id }}">
+                <input type="file" id="file-input" name="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv,.zip,.rar">
+                <input type="text" name="message" id="file-caption" placeholder="Add a caption (optional)...">
+              </form>
+
+              <!-- Text Message Form -->
               <form id="chat-form" class="chat-form">
                 @csrf
                 <input type="hidden" id="receiver-id" value="{{ $chattingWith->id }}">
                 <div class="input-group">
+                  <button type="button" class="attachment-btn" id="attachment-btn" title="Attach File">
+                    <i class="fas fa-paperclip"></i>
+                  </button>
                   <input type="text" name="message" id="message" class="chat-input" 
                          placeholder="Type your message to {{ $chattingWith->name }}..." autocomplete="off">
+                  <button type="button" class="emoji-btn" id="emoji-btn" title="Add Emoji">
+                    <i class="fas fa-smile"></i>
+                  </button>
                   <button type="submit" class="send-btn">
                     <i class="fas fa-paper-plane"></i>
                   </button>
                 </div>
               </form>
+              
+              <!-- File Preview Area -->
+              <div class="file-preview-area" id="file-preview-area" style="display: none;">
+                <div class="file-preview-content">
+                  <div class="file-preview-info">
+                    <div class="file-icon-preview">
+                      <i class="fas fa-file"></i>
+                    </div>
+                    <div class="file-details-preview">
+                      <span class="file-name-preview"></span>
+                      <span class="file-size-preview"></span>
+                    </div>
+                  </div>
+                  <div class="file-preview-actions">
+                    <input type="text" id="file-message-input" class="file-caption-input" placeholder="Add a caption (optional)...">
+                    <button type="button" class="file-send-btn" id="file-send-btn">
+                      <i class="fas fa-paper-plane"></i>
+                      Send
+                    </button>
+                    <button type="button" class="file-cancel-btn" id="file-cancel-btn">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div class="typing-indicator" id="typing-indicator" style="display: none;">
                 <span></span> is typing...
               </div>
             </div>
+
           @else
             <div class="chat-input-disabled">
               <p>Select a user to start messaging</p>
@@ -235,6 +344,8 @@
 
 @push('scripts')
 <script>
+
+  
 document.addEventListener('DOMContentLoaded', async () => {
   const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
   const userId = {{ auth()->id() }};
@@ -320,52 +431,133 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error("Echo not found. Make sure resources/js/echo.js is loaded and compiled.");
     updateStatus('Connection error', 'error');
   } else {
-    // Listen to private chat channel for this user
-    window.Echo.private('chat.' + userId)
-      .listen('.message.sent', (e) => {
-        const message = e.message;
+   window.Echo.private('chat.' + userId)
+  .listen('.message.sent', (e) => {
+    const message = e.message;
+    
+    // Only show message if it's from/to the currently selected chat
+    if (currentChattingWith && 
+        (message.user.id === currentChattingWith || message.receiver_id === currentChattingWith)) {
+      
+      const chatBox = document.getElementById('chat-box');
+      const isOwn = message.user.id === userId;
+      
+      // Create message HTML based on message type
+      let messageHTML = `
+        <div class="message ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${message.id}">
+          <div class="message-avatar">
+            <i class="fas fa-user"></i>
+          </div>
+          <div class="message-content">
+            <div class="message-header">
+              <span class="message-author">${message.user.name}</span>
+              <span class="message-time">${new Date().toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute:'2-digit'})}</span>
+              ${isOwn ? '<span class="read-status"><i class="fas fa-check"></i></span>' : ''}
+            </div>
+      `;
+
+      // Add content based on message type - THIS IS THE IMPORTANT PART
+      if (message.is_file_message || message.file_path) {
+        messageHTML += '<div class="message-file">';
         
-        // Only show message if it's from/to the currently selected chat
-        if (currentChattingWith && 
-            (message.user.id === currentChattingWith || message.receiver_id === currentChattingWith)) {
-          
-          const chatBox = document.getElementById('chat-box');
-          const isOwn = message.user.id === userId;
-          
-          const messageHTML = `
-            <div class="message ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${message.id}">
-              <div class="message-avatar">
-                <i class="fas fa-user"></i>
-              </div>
-              <div class="message-content">
-                <div class="message-header">
-                  <span class="message-author">${message.user.name}</span>
-                  <span class="message-time">${new Date().toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute:'2-digit'})}</span>
-                  ${isOwn ? '<span class="read-status"><i class="fas fa-check"></i></span>' : ''}
-                </div>
-                <div class="message-text">${message.message}</div>
+        if (message.type === 'image') {
+          messageHTML += `
+            <div class="image-message">
+              <img src="${message.file_url}" alt="${message.original_name || message.file_name}" class="message-image" loading="lazy">
+              <div class="image-overlay">
+                <a href="${message.file_url}" target="_blank" class="image-view-btn">
+                  <i class="fas fa-expand"></i>
+                </a>
+                <a href="/chat/download/${message.id}" class="image-download-btn">
+                  <i class="fas fa-download"></i>
+                </a>
               </div>
             </div>
           `;
-          
-          chatBox.insertAdjacentHTML('beforeend', messageHTML);
-          chatBox.scrollTop = chatBox.scrollHeight;
-
-          // Mark as read if not own message
-          if (!isOwn) {
-            fetch(`/chat/mark-read/${message.user.id}`, {
-              method: 'POST',
-              headers: {
-                'X-CSRF-TOKEN': csrfToken,
-                'Content-Type': 'application/json'
-              }
-            }).catch(err => console.warn('Mark read failed:', err));
-          }
+        } else if (message.type === 'video') {
+          messageHTML += `
+            <div class="video-message">
+              <video controls class="message-video" preload="metadata">
+                <source src="${message.file_url}" type="${message.file_type}">
+                Your browser does not support the video tag.
+              </video>
+              <div class="video-info">
+                <span class="file-name">${message.original_name || message.file_name}</span>
+                <span class="file-size">${message.formatted_file_size || ''}</span>
+              </div>
+            </div>
+          `;
+        } else if (message.type === 'audio') {
+          messageHTML += `
+            <div class="audio-message">
+              <audio controls class="message-audio">
+                <source src="${message.file_url}" type="${message.file_type}">
+                Your browser does not support the audio tag.
+              </audio>
+              <div class="audio-info">
+                <i class="fas fa-music"></i>
+                <div class="audio-details">
+                  <span class="file-name">${message.original_name || message.file_name}</span>
+                  <span class="file-size">${message.formatted_file_size || ''}</span>
+                </div>
+              </div>
+            </div>
+          `;
         } else {
-          // Update unread count in user list
-          updateUnreadCount(message.user.id);
+          // Document or other file type
+          const fileIcon = getFileIcon(message.file_type);
+          messageHTML += `
+            <div class="file-message">
+              <div class="file-icon">
+                <i class="${fileIcon}"></i>
+              </div>
+              <div class="file-info">
+                <span class="file-name">${message.original_name || message.file_name}</span>
+                <span class="file-size">${message.formatted_file_size || ''}</span>
+              </div>
+              <div class="file-actions">
+                <a href="/chat/download/${message.id}" class="file-download-btn" title="Download">
+                  <i class="fas fa-download"></i>
+                </a>
+              </div>
+            </div>
+          `;
         }
-      })
+
+        // Add caption if exists
+        if (message.message && message.message.trim()) {
+          messageHTML += `<div class="file-caption">${message.message}</div>`;
+        }
+        
+        messageHTML += '</div>'; // Close message-file
+      } else {
+        // Text message
+        messageHTML += `<div class="message-text">${message.message}</div>`;
+      }
+
+      messageHTML += `
+          </div>
+        </div>
+      `;
+      
+      chatBox.insertAdjacentHTML('beforeend', messageHTML);
+      chatBox.scrollTop = chatBox.scrollHeight;
+
+      // Mark as read if not own message
+      if (!isOwn) {
+        fetch(`/chat/mark-read/${message.user.id}`, {
+          method: 'POST',
+          headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Content-Type': 'application/json'
+          }
+        }).catch(err => console.warn('Mark read failed:', err));
+      }
+    } else {
+      // Update unread count in user list
+      updateUnreadCount(message.user.id);
+    }
+  })
       .listen('.message.read', (e) => {
         // Update read status for sent messages
         const messageIds = e.message_ids;
@@ -1169,5 +1361,203 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     updateStatus('Select a user to start', 'info');
   }
+
+
+
+  // Add this JavaScript code to your existing script section, after the existing code
+
+// Function to get file icon based on mime type
+const getFileIcon = (mimeType) => {
+  if (!mimeType) return 'fas fa-file';
+  
+  if (mimeType.startsWith('image/')) return 'fas fa-image';
+  if (mimeType.startsWith('video/')) return 'fas fa-video';
+  if (mimeType.startsWith('audio/')) return 'fas fa-music';
+  if (mimeType.includes('pdf')) return 'fas fa-file-pdf';
+  if (mimeType.includes('word')) return 'fas fa-file-word';
+  if (mimeType.includes('excel') || mimeType.includes('sheet')) return 'fas fa-file-excel';
+  if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return 'fas fa-file-powerpoint';
+  if (mimeType.includes('text')) return 'fas fa-file-alt';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) return 'fas fa-file-archive';
+  
+  return 'fas fa-file';
+};
+
+// Function to format file size
+const formatFileSize = (bytes) => {
+  if (!bytes) return '0 B';
+  
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${Math.round(size * 100) / 100} ${units[unitIndex]}`;
+};
+
+// File upload functionality
+const attachmentBtn = document.getElementById('attachment-btn');
+const fileInput = document.getElementById('file-input');
+const filePreviewArea = document.getElementById('file-preview-area');
+const fileSendBtn = document.getElementById('file-send-btn');
+const fileCancelBtn = document.getElementById('file-cancel-btn');
+const fileMessageInput = document.getElementById('file-message-input');
+const emojiBtn = document.getElementById('emoji-btn');
+
+let selectedFile = null;
+const maxFileSize = 52428800; // 50MB
+
+// Attachment button functionality
+if (attachmentBtn && fileInput) {
+  attachmentBtn.addEventListener('click', () => {
+    console.log('Attachment button clicked');
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      console.log('File selected:', file.name, file.size);
+      
+      if (file.size > maxFileSize) {
+        alert(`File size too large. Maximum allowed size is ${Math.round(maxFileSize / 1048576)}MB.`);
+        fileInput.value = '';
+        return;
+      }
+
+      selectedFile = file;
+      showFilePreview(file);
+    }
+  });
+
+  if (fileSendBtn) {
+    fileSendBtn.addEventListener('click', () => {
+      if (selectedFile) {
+        sendFileMessage(selectedFile, fileMessageInput.value.trim());
+      }
+    });
+  }
+
+  if (fileCancelBtn) {
+    fileCancelBtn.addEventListener('click', () => {
+      hideFilePreview();
+    });
+  }
+}
+
+// Emoji button functionality (basic implementation)
+if (emojiBtn) {
+  emojiBtn.addEventListener('click', () => {
+    console.log('Emoji button clicked');
+    
+    // Basic emoji insertion - you can enhance this with an emoji picker
+    const messageInput = document.getElementById('message');
+    if (messageInput) {
+      const commonEmojis = ['😀', '😂', '❤️', '👍', '👋', '😊', '🔥', '✨', '💯', '🎉'];
+      const selectedEmoji = commonEmojis[Math.floor(Math.random() * commonEmojis.length)];
+      messageInput.value += selectedEmoji;
+      messageInput.focus();
+    }
+  });
+}
+
+const showFilePreview = (file) => {
+  const fileIconPreview = document.querySelector('.file-icon-preview i');
+  const fileNamePreview = document.querySelector('.file-name-preview');
+  const fileSizePreview = document.querySelector('.file-size-preview');
+
+  if (!fileIconPreview || !fileNamePreview || !fileSizePreview) {
+    console.error('File preview elements not found');
+    return;
+  }
+
+  // Update file icon based on type
+  const fileIcon = getFileIcon(file.type);
+  fileIconPreview.className = fileIcon;
+
+  // Update file details
+  fileNamePreview.textContent = file.name;
+  fileSizePreview.textContent = formatFileSize(file.size);
+
+  // Show preview area
+  if (filePreviewArea) {
+    filePreviewArea.style.display = 'block';
+    if (fileMessageInput) {
+      fileMessageInput.focus();
+    }
+  }
+};
+
+const hideFilePreview = () => {
+  if (filePreviewArea) {
+    filePreviewArea.style.display = 'none';
+  }
+  if (fileInput) {
+    fileInput.value = '';
+  }
+  if (fileMessageInput) {
+    fileMessageInput.value = '';
+  }
+  selectedFile = null;
+};
+
+const sendFileMessage = async (file, caption) => {
+  if (!currentChattingWith) {
+    alert('Please select a user to send file to');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('receiver_id', currentChattingWith);
+  if (caption) {
+    formData.append('message', caption);
+  }
+
+  // Disable send button and show loading
+  if (fileSendBtn) {
+    fileSendBtn.disabled = true;
+    fileSendBtn.innerHTML = '<div class="loading-spinner"></div> Sending...';
+  }
+
+  try {
+    const response = await fetch('/chat', {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': csrfToken,
+      },
+      body: formData
+    });
+
+    // Check if response is actually JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const textResponse = await response.text();
+      console.error('Non-JSON response:', textResponse);
+      throw new Error('Server returned an error. Check file type and size.');
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+      hideFilePreview();
+      console.log('File sent successfully');
+    } else {
+      throw new Error(data.error || 'Failed to send file');
+    }
+  } catch (err) {
+    console.error('File send error:', err);
+    alert('Failed to send file: ' + err.message);
+  } finally {
+    if (fileSendBtn) {
+      fileSendBtn.disabled = false;
+      fileSendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+    }
+  }
+};
 });
 </script>
