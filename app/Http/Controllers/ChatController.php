@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessageSent;
+use App\Events\UserTyping;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -10,6 +11,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use App\Models\MessageReaction;
+use App\Events\MessageReactionAdded;
 
 class ChatController extends Controller
 {
@@ -406,4 +409,111 @@ class ChatController extends Controller
             ]
         ]);
     }
+
+
+    public function typing(Request $request)
+{
+    $request->validate([
+        'receiver_id' => 'required|exists:users,id',
+        'typing' => 'required|boolean'
+    ]);
+
+    broadcast(new UserTyping(
+        auth()->id(),
+        auth()->user()->name,
+        $request->receiver_id,
+        $request->typing
+    ));
+
+    return response()->json(['success' => true]);
+}
+
+
+
+// like reaction
+
+
+public function addReaction(Request $request, Message $message)
+{
+    $request->validate([
+        'reaction' => 'required|string|max:10'
+    ]);
+
+    // Check if user has access to this message (either sender or receiver)
+    if ($message->user_id !== auth()->id() && $message->receiver_id !== auth()->id()) {
+        return response()->json(['error' => 'Unauthorized'], 403);
+    }
+
+    // Check if user already reacted
+    $existingReaction = MessageReaction::where('message_id', $message->id)
+        ->where('user_id', auth()->id())
+        ->first();
+
+    if ($existingReaction) {
+        // Update existing reaction
+        $existingReaction->update(['reaction' => $request->reaction]);
+        $reaction = $existingReaction;
+    } else {
+        // Create new reaction
+        $reaction = MessageReaction::create([
+            'message_id' => $message->id,
+            'user_id' => auth()->id(),
+            'reaction' => $request->reaction
+        ]);
+    }
+
+    // Broadcast the reaction
+    broadcast(new MessageReactionAdded($reaction, $message));
+
+    return response()->json([
+        'success' => true,
+        'reaction' => $reaction,
+        'grouped_reactions' => $message->fresh()->grouped_reactions
+    ]);
+}
+
+public function removeReaction(Request $request, Message $message)
+{
+    // Check if user has access to this message
+    if ($message->user_id !== auth()->id() && $message->receiver_id !== auth()->id()) {
+        return response()->json(['error' => 'Unauthorized'], 403);
+    }
+
+    $deleted = MessageReaction::where('message_id', $message->id)
+        ->where('user_id', auth()->id())
+        ->delete();
+
+    if ($deleted) {
+        // Broadcast reaction removal
+        broadcast(new MessageReactionAdded(
+            new MessageReaction([
+                'message_id' => $message->id,
+                'user_id' => auth()->id(),
+                'reaction' => null
+            ]),
+            $message
+        ));
+    }
+
+    return response()->json([
+        'success' => true,
+        'grouped_reactions' => $message->fresh()->grouped_reactions
+    ]);
+}
+
+
+// Add to ChatController.php
+public function getMessageReactions(Message $message)
+{
+    // Check authorization
+    if ($message->user_id !== auth()->id() && $message->receiver_id !== auth()->id()) {
+        return response()->json(['error' => 'Unauthorized'], 403);
+    }
+
+    return response()->json([
+        'success' => true,
+        'reactions' => $message->grouped_reactions
+    ]);
+}
+
 }

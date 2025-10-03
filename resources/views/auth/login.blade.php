@@ -2,6 +2,18 @@
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
+
+    <!-- resources/views/auth/login.blade.php -->
+<div class="face-auth-option">
+    <div class="divider">
+        <span>or</span>
+    </div>
+    <a href="{{ route('face-auth.login') }}" class="btn btn-outline-primary">
+        <i class="fas fa-user-circle"></i>
+        Login with Face ID
+    </a>
+</div>
+
     <form method="POST" action="{{ route('login') }}">
         @csrf
 

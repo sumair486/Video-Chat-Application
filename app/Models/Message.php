@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Message extends Model
 {
@@ -226,4 +227,38 @@ class Message extends Model
             default => 'file'
         };
     }
+
+
+    public function reactions(): HasMany
+{
+    return $this->hasMany(MessageReaction::class);
+}
+
+/**
+ * Get grouped reactions with counts
+ */
+public function getGroupedReactionsAttribute(): array
+{
+    return $this->reactions()
+        ->selectRaw('reaction, COUNT(*) as count, GROUP_CONCAT(user_id) as user_ids')
+        ->groupBy('reaction')
+        ->get()
+        ->map(function ($item) {
+            return [
+                'reaction' => $item->reaction,
+                'count' => $item->count,
+                'user_ids' => array_map('intval', explode(',', $item->user_ids))
+            ];
+        })
+        ->toArray();
+}
+
+/**
+ * Check if user has reacted to this message
+ */
+public function hasUserReacted(int $userId): ?string
+{
+    $reaction = $this->reactions()->where('user_id', $userId)->first();
+    return $reaction ? $reaction->reaction : null;
+}
 }

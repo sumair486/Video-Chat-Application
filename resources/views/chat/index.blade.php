@@ -161,6 +161,28 @@
           @endif
         </div>
       </div>
+
+       <!-- Add reactions display -->
+      @if($message->reactions->count() > 0)
+        <div class="message-reactions">
+          @php
+            $groupedReactions = $message->grouped_reactions;
+          @endphp
+          @foreach($groupedReactions as $reactionGroup)
+            <div class="reaction-bubble {{ in_array(auth()->id(), $reactionGroup['user_ids']) ? 'user-reacted' : '' }}" 
+                 data-reaction="{{ $reactionGroup['reaction'] }}"
+                 data-message-id="{{ $message->id }}">
+              <span class="reaction-emoji">{{ $reactionGroup['reaction'] }}</span>
+              <span class="reaction-count">{{ $reactionGroup['count'] }}</span>
+              <div class="reaction-tooltip">
+                @foreach($reactionGroup['user_ids'] as $reactorId)
+                  {{ $reactorId === auth()->id() ? 'You' : \App\Models\User::find($reactorId)->name }}{{ !$loop->last ? ', ' : '' }}
+                @endforeach
+              </div>
+            </div>
+          @endforeach
+        </div>
+      @endif
     @endforeach
   @else
     <div class="no-chat-selected">
@@ -1364,6 +1386,261 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
+  const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥'];
+
+// Function to create reaction picker HTML
+const createReactionPicker = () => {
+  const picker = document.createElement('div');
+  picker.className = 'reaction-picker';
+  picker.innerHTML = REACTIONS.map(emoji => 
+    `<button class="reaction-option" data-reaction="${emoji}">${emoji}</button>`
+  ).join('');
+  return picker;
+};
+
+// Function to create reaction button for messages
+const createReactionButton = () => {
+  const btn = document.createElement('button');
+  btn.className = 'message-reaction-btn';
+  btn.innerHTML = '<i class="far fa-smile"></i>';
+  btn.title = 'Add reaction';
+  return btn;
+};
+
+// Function to render reactions on a message
+const renderReactions = (messageElement, reactions) => {
+  let reactionsContainer = messageElement.querySelector('.message-reactions');
+  
+  if (!reactionsContainer) {
+    reactionsContainer = document.createElement('div');
+    reactionsContainer.className = 'message-reactions';
+    messageElement.querySelector('.message-content').appendChild(reactionsContainer);
+  }
+  
+  if (!reactions || reactions.length === 0) {
+    reactionsContainer.innerHTML = '';
+    return;
+  }
+  
+  reactionsContainer.innerHTML = reactions.map(reaction => {
+    const isUserReacted = reaction.user_ids.includes(userId);
+    const userNames = reaction.user_ids.map(id => {
+      // You might want to fetch user names from somewhere
+      return id === userId ? 'You' : `User ${id}`;
+    }).join(', ');
+    
+    return `
+      <div class="reaction-bubble ${isUserReacted ? 'user-reacted' : ''}" 
+           data-reaction="${reaction.reaction}"
+           data-message-id="${messageElement.dataset.messageId}">
+        <span class="reaction-emoji">${reaction.reaction}</span>
+        <span class="reaction-count">${reaction.count}</span>
+        <div class="reaction-tooltip">${userNames}</div>
+      </div>
+    `;
+  }).join('');
+};
+
+// Function to add reaction to a message
+const addReaction = async (messageId, reaction) => {
+  try {
+    const response = await fetch(`/messages/${messageId}/react`, {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': csrfToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ reaction })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (messageElement) {
+        renderReactions(messageElement, data.grouped_reactions);
+      }
+    } else {
+      console.error('Failed to add reaction:', data.error);
+    }
+  } catch (err) {
+    console.error('Error adding reaction:', err);
+  }
+};
+
+// Function to remove reaction from a message
+const removeReaction = async (messageId) => {
+  try {
+    const response = await fetch(`/messages/${messageId}/react`, {
+      method: 'DELETE',
+      headers: {
+        'X-CSRF-TOKEN': csrfToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (messageElement) {
+        renderReactions(messageElement, data.grouped_reactions);
+      }
+    }
+  } catch (err) {
+    console.error('Error removing reaction:', err);
+  }
+};
+
+// Initialize reaction buttons for all messages
+const initializeReactions = () => {
+  document.querySelectorAll('.message').forEach(messageElement => {
+    // Skip if already initialized
+    if (messageElement.querySelector('.message-reaction-btn')) {
+      return;
+    }
+    
+    const messageContent = messageElement.querySelector('.message-content');
+    if (!messageContent) return;
+    
+    // Add reaction button
+    const reactionBtn = createReactionButton();
+    messageElement.appendChild(reactionBtn);
+    
+    // Create reaction picker
+    const reactionPicker = createReactionPicker();
+    messageElement.appendChild(reactionPicker);
+    
+    // Show/hide reaction picker
+    let hideTimeout;
+    
+    reactionBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      
+      // Hide all other pickers
+      document.querySelectorAll('.reaction-picker.show').forEach(picker => {
+        if (picker !== reactionPicker) {
+          picker.classList.remove('show');
+        }
+      });
+      
+      reactionPicker.classList.toggle('show');
+      clearTimeout(hideTimeout);
+    });
+    
+    // Handle reaction selection
+    reactionPicker.addEventListener('click', (e) => {
+      if (e.target.classList.contains('reaction-option')) {
+        const reaction = e.target.dataset.reaction;
+        const messageId = messageElement.dataset.messageId;
+        addReaction(messageId, reaction);
+        reactionPicker.classList.remove('show');
+      }
+    });
+    
+    // Auto-hide picker after 3 seconds
+    reactionBtn.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimeout);
+    });
+    
+    reactionPicker.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimeout);
+    });
+    
+    reactionPicker.addEventListener('mouseleave', () => {
+      hideTimeout = setTimeout(() => {
+        reactionPicker.classList.remove('show');
+      }, 1000);
+    });
+  });
+  
+  // Handle clicking on existing reactions (toggle)
+  document.addEventListener('click', (e) => {
+    const reactionBubble = e.target.closest('.reaction-bubble');
+    if (reactionBubble) {
+      const messageId = reactionBubble.dataset.messageId;
+      const reaction = reactionBubble.dataset.reaction;
+      
+      // If user already reacted with this emoji, remove it
+      if (reactionBubble.classList.contains('user-reacted')) {
+        removeReaction(messageId);
+      } else {
+        // Otherwise add/change reaction
+        addReaction(messageId, reaction);
+      }
+    }
+  });
+  
+  // Close pickers when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.message-reaction-btn') && 
+        !e.target.closest('.reaction-picker')) {
+      document.querySelectorAll('.reaction-picker.show').forEach(picker => {
+        picker.classList.remove('show');
+      });
+    }
+  });
+};
+
+// Initialize reactions on page load
+initializeReactions();
+
+// Listen for new messages and initialize reactions
+const originalChatBoxObserver = new MutationObserver((mutations) => {
+  mutations.forEach((mutation) => {
+    if (mutation.addedNodes.length) {
+      mutation.addedNodes.forEach(node => {
+        if (node.classList && node.classList.contains('message')) {
+          initializeReactions();
+        }
+      });
+    }
+  });
+});
+
+const chatBox = document.getElementById('chat-box');
+if (chatBox) {
+  originalChatBoxObserver.observe(chatBox, {
+    childList: true,
+    subtree: true
+  });
+}
+
+// Listen for real-time reaction updates via Echo
+if (window.Echo) {
+  window.Echo.private('chat.' + userId)
+    .listen('.message.reaction.added', (e) => {
+      console.log('Reaction received:', e);
+      
+      const messageElement = document.querySelector(`[data-message-id="${e.message_id}"]`);
+      if (messageElement) {
+        // Fetch updated reactions for this message
+        fetch(`/messages/${e.message_id}/reactions`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.success) {
+              renderReactions(messageElement, data.reactions);
+              
+              // Show a brief animation if it's not the current user's reaction
+              if (e.user_id !== userId) {
+                const newReaction = messageElement.querySelector(
+                  `.reaction-bubble[data-reaction="${e.reaction}"]`
+                );
+                if (newReaction) {
+                  newReaction.classList.add('new');
+                  setTimeout(() => {
+                    newReaction.classList.remove('new');
+                  }, 300);
+                }
+              }
+            }
+          })
+          .catch(err => console.error('Error fetching reactions:', err));
+      }
+    });
+}
+
+
   // Add this JavaScript code to your existing script section, after the existing code
 
 // Function to get file icon based on mime type
@@ -1398,6 +1675,114 @@ const formatFileSize = (bytes) => {
   
   return `${Math.round(size * 100) / 100} ${units[unitIndex]}`;
 };
+
+
+// Add this code to your existing DOMContentLoaded event listener
+// Place it after your Echo setup and before the file upload functionality
+
+// Typing indicator functionality
+let typingTimeout = null;
+const TYPING_TIMER_LENGTH = 3000; // 3 seconds
+let isTyping = false;
+
+const messageInput = document.getElementById('message');
+const typingIndicator = document.getElementById('typing-indicator');
+
+if (messageInput && currentChattingWith) {
+  // Detect when user is typing
+  messageInput.addEventListener('input', () => {
+    if (!isTyping && currentChattingWith) {
+      isTyping = true;
+      
+      // Broadcast that user started typing
+      fetch('/chat/typing', {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          receiver_id: currentChattingWith,
+          typing: true
+        })
+      }).catch(err => console.warn('Typing broadcast failed:', err));
+    }
+
+    // Clear existing timeout
+    clearTimeout(typingTimeout);
+
+    // Set timeout to stop typing indicator after 3 seconds of inactivity
+    typingTimeout = setTimeout(() => {
+      isTyping = false;
+      
+      // Broadcast that user stopped typing
+      fetch('/chat/typing', {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          receiver_id: currentChattingWith,
+          typing: false
+        })
+      }).catch(err => console.warn('Typing stop broadcast failed:', err));
+    }, TYPING_TIMER_LENGTH);
+  });
+
+  // Stop typing indicator when user submits message
+  const chatForm = document.getElementById('chat-form');
+  if (chatForm) {
+    chatForm.addEventListener('submit', () => {
+      clearTimeout(typingTimeout);
+      isTyping = false;
+      
+      // Broadcast that user stopped typing
+      fetch('/chat/typing', {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          receiver_id: currentChattingWith,
+          typing: false
+        })
+      }).catch(err => console.warn('Typing stop broadcast failed:', err));
+    });
+  }
+}
+
+// Listen for typing events from other users
+if (window.Echo) {
+  window.Echo.private('chat.' + userId)
+    .listen('.user.typing', (e) => {
+      // Only show typing indicator if message is from current chat partner
+      if (currentChattingWith && e.user_id === currentChattingWith) {
+        if (e.typing) {
+          // Show typing indicator
+          if (typingIndicator) {
+            const typingName = typingIndicator.querySelector('span');
+            if (typingName) {
+              typingName.textContent = e.user_name || currentChattingWithName;
+            }
+            typingIndicator.style.display = 'block';
+            
+            // Scroll chat to bottom to show typing indicator
+            const chatBox = document.getElementById('chat-box');
+            if (chatBox) {
+              chatBox.scrollTop = chatBox.scrollHeight;
+            }
+          }
+        } else {
+          // Hide typing indicator
+          if (typingIndicator) {
+            typingIndicator.style.display = 'none';
+          }
+        }
+      }
+    });
+}
 
 // File upload functionality
 const attachmentBtn = document.getElementById('attachment-btn');
